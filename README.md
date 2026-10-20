@@ -1,6 +1,4 @@
-> 适用对象：嵌入式 Linux 开发者、准备做门禁可视对讲/低带宽视频分发项目的工程师，以及需要复刻本项目的大学生与面试准备者。
-
-# Arm-linux-Smart-Community · RK3506B 门禁可视对讲与智能社区终端
+#  Visualized-intercom-intelligent-access-control · RK3506B 门禁可视对讲与智能社区终端
 
 **在没有 GPU、没有硬件视频编码器的 RK3506B 上，用「MJPEG 原样透传 + 中转软件编码」把 1080p30 视频从 46 Mbps 压到 5 Mbps，端到端延迟 193.9 ms，支持局域网 MJPEG 与远程 WebRTC 双通道分发。**
 
