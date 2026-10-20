@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='utf-8'?>
+<RCC>
+    <qresource prefix="/">
+        <file>qss/mystyle.qss</file>
+        <file>weather/cloudy (2).png</file>
+        <file>weather/cloudy.png</file>
+        <file>weather/raining.png</file>
+        <file>weather/sunny.png</file>
+        <file>weather/sunny_rain.png</file>
+        <file>pic/icons/ic_back.png</file>
+        <file>pic/icons/ic_humidity.png</file>
+        <file>pic/icons/ic_logo.png</file>
+        <file>pic/icons/ic_sunny.png</file>
+        <file>pic/icons/ic_temper.png</file>
+        <file>pic/icons/ic_video.png</file>
+        <file>pic/icons/ic_wifi.png</file>
+        <file>splash.png</file>
+    </qresource>
+</RCC>

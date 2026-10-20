@@ -1,0 +1,78 @@
+#!/bin/sh
+#=============================================================================
+# S99wd_guard —— 开机启动「进程守护 + 硬件看门狗喂狗」
+#
+#   放在板子 /etc/init.d/ 下并 chmod +x。
+#   顺序：S98av_stream（起推流）→ S99smart_community（起社区应用）→ 本脚本
+#         所以它启动时两个被守护的进程都应该已经在跑了。
+#
+#   守护逻辑本体在 /userdata/smart_community/wd_guard.sh
+#   （脚本可以单独改/手动跑，改完不用重启板子，restart 本服务即可）
+#
+#   手动控制：/etc/init.d/S99wd_guard start|stop|restart|status
+#=============================================================================
+
+PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
+GUARD=/userdata/smart_community/wd_guard.sh
+PIDF=/var/run/wd_guard.pid
+LOG=/userdata/wd_guard.log
+
+is_running()
+{
+    [ -f "$PIDF" ] || return 1
+    pid=$(cat "$PIDF" 2>/dev/null)
+    [ -n "$pid" ] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    return 0
+}
+
+start_guard()
+{
+    if is_running; then
+        echo "wd_guard 已在运行 (pid=$(cat $PIDF))"
+        return 0
+    fi
+    [ -f "$GUARD" ] || { echo "找不到 $GUARD"; return 1; }
+    command -v setsid >/dev/null 2>&1 && SETSID=setsid || SETSID=""
+    $SETSID "$GUARD" >/dev/null 2>&1 &
+    sleep 1
+    if is_running; then
+        echo "wd_guard 已启动 (pid=$(cat $PIDF))，日志: $LOG"
+    else
+        echo "wd_guard 启动失败，看 $LOG"
+        return 1
+    fi
+}
+
+stop_guard()
+{
+    if is_running; then
+        pid=$(cat "$PIDF")
+        kill "$pid" 2>/dev/null      # 让它走 trap：关闭看门狗 + 删 pidfile
+        sleep 1
+        kill -9 "$pid" 2>/dev/null
+        rm -f "$PIDF"
+        echo "wd_guard 已停止"
+    else
+        echo "wd_guard 没有在运行"
+    fi
+}
+
+case "$1" in
+    start)   start_guard ;;
+    stop)    stop_guard ;;
+    restart) stop_guard; sleep 1; start_guard ;;
+    status)
+        if is_running; then
+            echo "wd_guard 运行中 (pid=$(cat $PIDF))"
+        else
+            echo "wd_guard 未运行"
+        fi
+        [ -f /userdata/wd_guard.state ] && { echo "--- 状态 ---"; cat /userdata/wd_guard.state; }
+        echo "--- 日志尾部 ---"
+        tail -8 "$LOG" 2>/dev/null
+        ;;
+    *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac
+
+exit 0

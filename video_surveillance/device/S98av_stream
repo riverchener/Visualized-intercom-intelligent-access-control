@@ -1,0 +1,158 @@
+#!/bin/sh
+#=============================================================================
+# S98av_stream —— 设备端「按需推流」启停脚本（RK3506B 门口机）
+#
+# 放在板子 /etc/init.d/ 下并 chmod +x。
+# 顺序：S47 wifi/校时 → S49 weston → S98（本脚本）→ S99 社区应用
+#
+# ★ 2026-10-20 重要变更（用户需求，优先级最高）：
+#     "平时完全不出流，只有通话期间有视频和声音"
+#   → 开机时本脚本**不再**启动 av_stream（此时 Qt 应用还没起来，一定是开机阶段）。
+#     访客按「访客呼叫」→ 住户在终端点【接听】→ 板端 Qt 轮询到 callstate=accepted
+#     → 执行 /userdata/av_stream_on.sh → 本脚本 start（FORCE=1）→ 开始推流。
+#     挂断/返回首页 → /userdata/av_stream_off.sh → 本脚本 stop。
+#
+#   手工启动（调试用，必须带 FORCE=1，否则开机阶段会被挡掉）：
+#     FORCE=1 /etc/init.d/S98av_stream start
+#     /etc/init.d/S98av_stream stop
+#     /etc/init.d/S98av_stream status
+#
+#   ⚠ 需要"重启"av_stream 时**一律**用 /userdata/safe_restart_av_stream.sh：
+#     它先 touch /userdata/wd_guard.pause 再做重启，避免和 S99wd_guard 抢跑
+#     出现两个 av_stream 实例（实测过：双实例抢 /dev/video0，CPU 冲到 90%）。
+#=============================================================================
+
+PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
+APP=/userdata/av_stream
+LOG=/userdata/av_stream.log
+# 中转服务地址（可用 /etc/default/av_stream 覆盖）
+[ -f /etc/default/av_stream ] && . /etc/default/av_stream
+SERVER=${SERVER:-192.168.137.94:9100}
+DEVICE_ID=${DEVICE_ID:-rk3506b-01}
+VIDEO_DEV=${VIDEO_DEV:-/dev/video0}
+# 画质/帧率档位（实测数据见 docs/设计与实现.md「帧率与画质调优」）：
+#   1920x1080@15 → 27.6Mbps，1小时录像约 12GB，画质最好
+#   1920x1080@30 → 53.7Mbps，1小时录像约 24GB
+#   1280x720@15  → 14.0Mbps，1小时录像约  6GB（带宽/存储紧张时用）
+SIZE=${SIZE:-1920x1080}
+FPS=${FPS:-15}
+# ★ 混合推流模式 C 的兼容开关：IDLE_FPS=0 表示"不区分待机/呼叫档位"，
+#   直接用上面的 FPS（按需推流下 av_stream 只在通话期间存在，没必再降帧）。
+IDLE_FPS=${IDLE_FPS:-0}
+CALL_FPS=${CALL_FPS:-30}
+CTRL=${CTRL:-}            # 例："sharpness=3,contrast=10"（调观感）
+AUDIO=${AUDIO:-}          # 采集设备，例：plughw:CARD=Device（USB 麦）；留空=只推视频
+# ★ M3/M4 新增（对讲下行 + 回声消除）
+AUDIO_OUT=${AUDIO_OUT:-plughw:0,0}   # 播放设备（住户说话从喇叭出来）；留空=不播放
+TALK=${TALK:-full}                   # full=全双工+AEC（默认）/ half=半双工回退
+AEC=${AEC:-on}                       # 回声消除开关（仅 full 有效；关掉可对比抑制效果）
+AUDIO_GATE_DB=${AUDIO_GATE_DB:--60}  # 麦克风门限 dB；写 off = 关闭门限（查底噪/AEC 取证用）
+
+start_stream()
+{
+    [ -x "$APP" ] || { echo "找不到 $APP"; return 1; }
+
+    # 等网络（最多 20 秒），否则一开始连不上中转服务会一直重试（也能恢复，但没必要刷日志）
+    i=0
+    while [ $i -lt 20 ]; do
+        ip route 2>/dev/null | grep -q '^default' && break
+        sleep 1
+        i=$((i + 1))
+    done
+
+    killall av_stream 2>/dev/null
+    sleep 1
+
+    ARGS="--server $SERVER --id $DEVICE_ID --dev $VIDEO_DEV --size $SIZE --fps $FPS"
+    ARGS="$ARGS --idle-fps $IDLE_FPS --call-fps $CALL_FPS"
+    [ -n "$CTRL" ] && ARGS="$ARGS --set-ctrl $CTRL"
+    [ -n "$AUDIO" ] && ARGS="$ARGS --audio $AUDIO"
+    if [ -n "$AUDIO" ]; then
+        if [ "$AUDIO_GATE_DB" = "off" ]; then
+            ARGS="$ARGS --no-audio-gate"
+        else
+            ARGS="$ARGS --audio-gate-db $AUDIO_GATE_DB"
+        fi
+    fi
+    # ★ 对讲：下行播放 + 全双工 AEC（M3/M4）
+    [ -n "$AUDIO_OUT" ] && ARGS="$ARGS --audio-out $AUDIO_OUT"
+    ARGS="$ARGS --talk $TALK --aec $AEC"
+
+    cd /userdata || return 1
+    # ★ USB 音频模块（snd-usb-audio + 依赖）：不加载的话 USB 麦克风不会被识别
+    [ -x /userdata/modules/load_usb_audio.sh ] && /userdata/modules/load_usb_audio.sh
+    sh /userdata/smart_community/mic_on.sh
+    setsid $APP $ARGS > $LOG 2>&1 < /dev/null &
+    # ★ 2026-10-20（按需推流延迟优化）：原来固定 `sleep 2` 再检查，白白把
+    #   /tmp/av_stream.oplock 的持锁时间拉长 2 秒 —— 挂断时 av_stream_off.sh
+    #   要等这把锁，"挂断→停流"因此被拖到 3 秒以上。改成"起来就立刻返回"
+    #   （最多仍等 3 秒，行为和原来一致，只是不再无脑睡满）。
+    i=0
+    while [ $i -lt 15 ]; do
+        pidof av_stream >/dev/null 2>&1 && break
+        sleep 0.2
+        i=$((i + 1))
+    done
+    pidof av_stream >/dev/null 2>&1 \
+        && echo "av_stream 已启动 ($SERVER, $SIZE@$FPS)（等待 ${i}×0.2s）" \
+        || echo "av_stream 启动失败，看 $LOG"
+
+    # 确保「进程守护」在跑（幂等：S99wd_guard 已在运行就什么都不做）
+    [ -x /etc/init.d/S99wd_guard ] && /etc/init.d/S99wd_guard start >/dev/null 2>&1
+}
+
+stop_stream()
+{
+    killall av_stream 2>/dev/null
+    # ★ 等它真的退出（旧版主线程 sleep(30) 才检查退出标志，会占着 /dev/video0
+    #   和声卡，导致新起的进程一直 "Device or resource busy"）。
+    #   ★ 2026-10-20 收紧：先给 2 秒体面退出；还不退就**立刻 SIGKILL**。
+    #   实测能遇到 av_stream 卡在阻塞 I/O（1080p30 往中转写）里、SIGTERM 半天
+    #   没被处理的情况：那一次"挂断→停流"被测出 6.09 秒（其余 10 次都在
+    #   0.65~1.39 秒）。隐私优先 → 2 秒后强杀，摄像头/声卡由内核随进程退出释放，
+    #   下一个通话重新打开即可（原版 6 秒后才强杀，这里只是把等待窗口缩短）。
+    i=0
+    while [ $i -lt 4 ]; do
+        pidof av_stream >/dev/null 2>&1 || break
+        sleep 0.5
+        i=$((i + 1))
+    done
+    if pidof av_stream >/dev/null 2>&1; then
+        echo "av_stream 2 秒内没退出（可能在阻塞 I/O 里），强制 SIGKILL"
+        killall -9 av_stream 2>/dev/null
+        i=0
+        while [ $i -lt 15 ]; do
+            pidof av_stream >/dev/null 2>&1 || break
+            sleep 0.1
+            i=$((i + 1))
+        done
+    fi
+    echo "av_stream 已停止"
+}
+
+# 新增：确保 eth0 有同网段地址（DHCP 失败时会拿到 169.254）
+if ! ip -4 addr show eth0 2>/dev/null | grep -q "192.168.137"; then
+    ip addr flush dev eth0 2>/dev/null
+    ip link set eth0 up
+    ip addr add 192.168.137.85/24 dev eth0 2>/dev/null
+fi
+
+case "$1" in
+    start)
+        # ★ 按需推流：开机阶段（Qt 应用还没起来）绝不自动推流。
+        #   只有 FORCE=1（av_stream_on.sh 会带）或者 Qt 已经在跑（人工调试/恢复）才启动。
+        if [ "$FORCE" != "1" ] && ! pidof intelligent_community >/dev/null 2>&1; then
+            echo "按需推流模式：开机不启动 av_stream（等住户接听后由 /userdata/av_stream_on.sh 启动）"
+            exit 0
+        fi
+        start_stream
+        ;;
+    stop)    stop_stream ;;
+    restart) stop_stream; sleep 1; FORCE=1 start_stream ;;
+    status)
+        ps | grep [a]v_stream | grep -v grep && echo "--- 日志尾部 ---" && tail -6 $LOG 2>/dev/null | tr -d '\000'
+        ;;
+    *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac
+
+exit 0

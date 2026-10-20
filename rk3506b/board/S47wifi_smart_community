@@ -1,0 +1,75 @@
+#!/bin/sh
+#=============================================================================
+# S47wifi_smart_community —— 开机自动连 WiFi + NTP 校时
+#
+# 放到板子 /etc/init.d/ 下并 chmod +x。
+# 执行顺序：S45connman（网络管理）之后、S49weston（图形）之前，
+#           这样 Qt 程序起来时已经有网络、时间也已经校准。
+#
+# 注意：联网是"阻塞"操作（一般 8~15 秒）。为了不让开机动不动等 30 秒，
+#       这里给 WiFi 连接留 20 秒上限，超时也继续往下走（程序会在后台重试天气）。
+#
+# 手动控制：/etc/init.d/S47wifi_smart_community start|stop|status
+#=============================================================================
+
+PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
+APP_DIR=/userdata/smart_community
+LOG=$APP_DIR/wifi.log
+
+start_wifi()
+{
+    [ -x $APP_DIR/wifi_connect.sh ] || return 0
+
+    {
+        echo "=== $(date) 开始连接 WiFi ==="
+        # 最多等 20 秒，超时不阻塞开机
+        timeout 20 sh $APP_DIR/wifi_connect.sh
+        RC=$?
+        echo "wifi_connect.sh 返回 $RC"
+
+        # 连上了才校时（timesync.sh 内部也会等默认路由）
+        if [ $RC -eq 0 ]; then
+            timeout 30 sh $APP_DIR/timesync.sh
+        fi
+        echo "=== 结束: $(date) ==="
+    } >> $LOG 2>&1 &
+}
+
+stop_wifi()
+{
+    connmanctl disconnect $(connmanctl services 2>/dev/null | grep -w cjh | awk '{print $NF}' | head -1) >/dev/null 2>&1
+}
+
+status_wifi()
+{
+    sh $APP_DIR/wifi_connect.sh --status
+    echo "== 日志 =="
+    tail -20 $LOG 2>/dev/null
+}
+
+case "$1" in
+    start)
+        echo -n "starting wifi_smart_community... "
+        start_wifi
+        echo "done."
+        ;;
+    status)
+        status_wifi
+        ;;
+    stop)
+        echo -n "stopping wifi... "
+        stop_wifi
+        echo "done."
+        ;;
+    restart)
+        stop_wifi
+        sleep 1
+        start_wifi
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

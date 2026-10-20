@@ -1,0 +1,38 @@
+#=============================================================================
+# mediamtx.yml —— MediaMTX 网关配置（★ 2026-10-20 按需推流 + 删除 HLS 版）
+#
+#   ffmpeg 把 H.264+Opus 以 **RTSP 推给 MediaMTX(8554)**，MediaMTX 再对外提供：
+#     * WebRTC(WHEP) : http://<IP>:8889/<设备号>   ← 浏览器/手机，延迟最低（唯一对外播放入口）
+#     * RTSP         : rtsp://127.0.0.1:8554/<设备号> ← **内部发布通道**，不对外宣传
+#                       （ffmpeg 推流用它；删掉就没有 WebRTC 的源了，所以必须保留）
+#     * HLS          : 已整体删除（hls: no，8888 端口不再监听）
+#   任意路径都允许发布（paths.all_others），不写死设备名
+#=============================================================================
+logLevel: info
+
+# ---- RTSP：接收 ffmpeg 推流（内部通道，保留）----
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp, udp]
+rtspEncryption: "no"
+
+# ---- WebRTC：给浏览器用（低延迟，唯一对外播放入口）----
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: "*"
+webrtcLocalUDPAddress: :8189
+# 同时提供 TCP 候选（UDP 被防火墙挡时仍能连上）
+webrtcLocalTCPAddress: :8189
+webrtcIPsFromInterfaces: yes
+webrtcAdditionalHosts: []
+
+# ---- HLS：★ 2026-10-20 已删除（用户要求），8888 端口不再监听 ----
+hls: no
+
+# ---- 管理 API：用来查"流有没有在推" ----
+api: yes
+apiAddress: :9997
+
+# ---- 路径：允许任意设备号发布 ----
+paths:
+  all_others:

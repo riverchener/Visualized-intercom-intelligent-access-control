@@ -1,0 +1,119 @@
+#!/bin/sh
+#=============================================================================
+# S99smart_community —— 开机自启动「门禁可视对讲」终端程序
+#   放到板子的 /etc/init.d/ 下，并 chmod +x
+#
+# 顺序说明：
+#   S49weston 是先启动的（Qt 程序必须跑在 weston 上），
+#   S50systemui 是出厂 UI，本脚本会先把它停掉，避免两个界面抢屏。
+#
+#   本脚本启动的 Qt 应用不涉及中文输入法插件，也不驱动 GPIO。
+#
+#   崩溃取证 + 与 wd_guard 协作：
+#   1) /tmp/ic.managed_stop：本脚本 start|restart 期间写的"人工启停中"标记，
+#      wd_guard 看到它就不插手；start_app 把新实例拉起来后再删掉。
+#      这样 wd_guard 可以做到"确认缺席 1 秒就重启"，又不会在人工 restart 的
+#      1~2 秒空窗里叠出第二个界面。
+#   2) ulimit -c unlimited + core_pattern 指向 /tmp（tmpfs 217MB 空闲；:rootfs
+#      只剩 2.6MB，/userdata 只剩 38MB，放不下 core）：应用真崩溃时能留 core。
+#   3) 后台子 shell 包住应用，进程一退出就把 "rc + 运行时长 + 时间戳" 追加到
+#      /userdata/smart_community/app_exit.log
+#      —— rc=139 SIGSEGV / 134 SIGABRT / 137 SIGKILL(9) / 143 SIGTERM / 0 正常退出
+#      （12:26 那次"应用掉了"就是因为没有这个，什么证据都没留下）
+#
+# 日志：/userdata/smart_community/app.log
+#       /userdata/smart_community/app_exit.log   （退出原因）
+#       /tmp/core.<程序名>.<pid>                 （崩溃时，需要时 adb pull 下来）
+# 手动控制：/etc/init.d/S99smart_community start|stop|restart
+#   想让应用"停着别被守护拉起"：touch /userdata/wd_guard.pause
+#=============================================================================
+
+PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
+APP_DIR=/userdata/smart_community
+APP=$APP_DIR/intelligent_community
+MANAGED=/tmp/ic.managed_stop
+export XDG_RUNTIME_DIR=/var/run
+export QT_QPA_PLATFORM=wayland
+
+start_app()
+{
+    # 1) 等 weston 的 wayland socket（最多等 5 秒）
+    counter=0
+    while [ ! -e "${XDG_RUNTIME_DIR}/wayland-0" ] && [ $counter -lt 50 ]; do
+        sleep 0.1
+        counter=$((counter + 1))
+    done
+
+    # 2) 关掉出厂 UI 的**全部**进程
+    #    S50systemui stop 只会 killall systemui，出厂还有两个窗口会盖在我们界面上：
+    #      controlcenter —— 顶部状态栏（1280x53，会压住我们的界面顶部）
+    #      dynamicIsland  —— 灵动岛
+    #    实测 scene-graph 里一直能看到 controlcenter，所以这里手动清干净。
+    /etc/init.d/S50systemui stop >/dev/null 2>&1
+    killall systemui controlcenter dynamicIsland 2>/dev/null
+    sleep 1
+
+    # 3) 崩溃取证准备：core 落到 /tmp（tmpfs）
+    echo '/tmp/core.%e.%p' > /proc/sys/kernel/core_pattern 2>/dev/null
+
+    # 4) 启动本程序（必须后台运行，否则 init 卡死开不了机）
+    #    ★ QT_MESSAGE_PATTERN：给每条 qInfo/qWarning 打上**毫秒级时间戳**。
+    #    ★ 外层子 shell 负责把退出原因写进 app_exit.log（见文件头说明）。
+    cd $APP_DIR
+    (
+        ulimit -c unlimited 2>/dev/null
+        export QT_MESSAGE_PATTERN='[%{time yyyy-MM-dd hh:mm:ss.zzz}] %{type} %{message}'
+        _st=$(date +%s)
+        $APP > $APP_DIR/app.log 2>&1
+        _rc=$?
+        case "$_rc" in
+            0)   _why="正常退出" ;;
+            134) _why="SIGABRT(abort/断言)" ;;
+            137) _why="SIGKILL(9) 被强杀或 OOM" ;;
+            139) _why="SIGSEGV(11) 段错误" ;;
+            143) _why="SIGTERM(15) 被 kill" ;;
+            *)   _why="异常退出" ;;
+        esac
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] app 退出 rc=$_rc ($_why) 运行 $(( $(date +%s) - _st ))s pid=$!" \
+            >> $APP_DIR/app_exit.log
+    ) &
+
+    # 5) 新实例已拉起 → 撤销"人工启停中"标记（wd_guard 可以重新守护了）
+    sleep 1
+    rm -f "$MANAGED"
+    pidof intelligent_community >/dev/null 2>&1 || \
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 警告：start_app 后仍看不到 intelligent_community" >> $APP_DIR/app_exit.log
+}
+
+stop_app()
+{
+    # 先写"人工启停中"标记，wd_guard 看到就不会把这段空窗当崩溃去重启
+    date +%s > "$MANAGED" 2>/dev/null
+    killall intelligent_community 2>/dev/null
+    # 需要时把出厂 UI 拉回来： /etc/init.d/S50systemui start
+}
+
+case "$1" in
+    start)
+        echo -n "starting smart_community(door station)... "
+        start_app
+        echo "done."
+        ;;
+    stop)
+        echo -n "stoping smart_community... "
+        stop_app
+        echo "done."
+        ;;
+    restart|reload)
+        stop_app
+        sleep 1
+        start_app
+        echo "restarted."
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0

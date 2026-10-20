@@ -1,0 +1,86 @@
+# ============================================================
+# RK3506B 门禁可视对讲 —— 忽略规则
+# ============================================================
+
+# ---------- 编译产物 ----------
+# 板端 C 程序（交叉编译生成）
+video_surveillance/build/
+video_surveillance/device/av_stream
+video_surveillance/device/*.o
+
+# Qt 应用（qmake 生成）
+rk3506b/build/
+rk3506b/app/*.o
+rk3506b/app/moc_*.cpp
+rk3506b/app/moc_*.h
+rk3506b/app/ui_*.h
+rk3506b/app/qrc_*.cpp
+rk3506b/app/.qmake.stash
+rk3506b/app/Makefile
+
+# 内核模块
+rk3506b/driver/*.ko
+rk3506b/driver/*.o
+rk3506b/driver/.*.cmd
+rk3506b/driver/Module.symvers
+rk3506b/driver/modules.order
+rk3506b/driver/*.mod
+rk3506b/driver/*.mod.c
+
+# MCU 固件
+rk3506b/mcu/*.bin
+rk3506b/mcu/*.elf
+rk3506b/mcu/*.map
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+
+# ---------- 运行时数据 ----------
+# 中转运行时生成
+video_surveillance/calls.json
+video_surveillance/logs/
+video_surveillance/server.log
+*.log
+
+# 快照与录像
+video_surveillance/snapshots/
+*.jpg.bak
+
+# ---------- 编辑器与系统 ----------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 本地环境与凭据（重要） ----------
+# 含 VM 账号密码、板端 IP 等，绝不提交
+tools/vm.py
+tools/vmput.py
+tools/vmget.py
+tools/vmsync.py
+*.local
+.env
+.env.*
+
+# ---------- 备份与临时目录 ----------
+_backup_*/
+_to_delete/
+archive/
+*.bak
+*.bak_*
+*.orig
+*.rej
+
+# ---------- 大文件 ----------
+*.tar.gz
+*.zip
+*.7z

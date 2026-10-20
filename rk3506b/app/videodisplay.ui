@@ -1,0 +1,53 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ui version="4.0">
+ <class>videodisplay</class>
+ <widget class="QWidget" name="videodisplay">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>1280</width><height>720</height></rect>
+  </property>
+  <property name="windowTitle">
+   <string>可视对讲</string>
+  </property>
+  <!-- ★★ 2026-10-20 第二次 UI 精简（用户要求：只留最上方一行状态 + 大画面）
+       * 删除 topBar 里的标题「可视对讲」(titleLabel) 与通话计时 (timerLabel) → 其余文字全部去掉
+       * 删除整块 sideCard（「对讲」标题 + 「通话中」文字 + 原先的下行音频/喇叭/AEC 状态）
+       * 只保留 statusLabel：**唯一上屏文字**，居中放在最上方一行
+       * 只保留 backBtn：**无文字的图标按钮**（返回首页 = 挂断 + 停流，功能不能掉）
+       * displaytLabel 撑满到只剩顶部这一行：1280x656（改前 872x490），
+         且不再 setScaledContents(true)，按原比例居中显示（16:9 源 → 1166x656，左右留窄黑边，不变形）
+       * 页面上**没有**任何常驻浮层：开门提示沿用原来的弹窗（用户指示 docs/24，不改动）
+       保留的控件名（代码里在用）：backBtn / statusLabel / displaytLabel -->
+  <widget class="QFrame" name="topBar">
+   <property name="geometry">
+    <rect><x>0</x><y>0</y><width>1280</width><height>64</height></rect>
+   </property>
+   <property name="styleSheet"><string notr="true">background-color: #0B1017; border: none;</string></property>
+   <widget class="QLabel" name="statusLabel">
+    <property name="geometry"><rect><x>0</x><y>0</y><width>1280</width><height>64</height></rect></property>
+    <property name="text"><string>正在接通…</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+    <property name="styleSheet"><string notr="true">font-size: 26px; font-weight: 600; color: #F8FAFC; background: transparent;</string></property>
+   </widget>
+   <widget class="QPushButton" name="backBtn">
+    <property name="geometry"><rect><x>8</x><y>7</y><width>88</width><height>50</height></rect></property>
+    <property name="text"><string/></property>
+    <property name="icon">
+     <iconset>
+      <normaloff>:/pic/icons/ic_back.png</normaloff>:/pic/icons/ic_back.png</iconset>
+    </property>
+    <property name="iconSize"><size><width>28</width><height>28</height></size></property>
+    <property name="styleSheet"><string notr="true">QPushButton { background-color: #E8EEF7; border: 1px solid #496079; border-radius: 8px; }
+QPushButton:pressed { background-color: #C9D6E8; }</string></property>
+   </widget>
+  </widget>
+  <widget class="QLabel" name="displaytLabel">
+   <property name="geometry"><rect><x>0</x><y>64</y><width>1280</width><height>656</height></rect></property>
+   <property name="text"><string>正在等待画面…</string></property>
+   <property name="alignment"><set>Qt::AlignCenter</set></property>
+   <property name="scaledContents"><bool>false</bool></property>
+   <property name="styleSheet"><string notr="true">background-color: #0B1017; color: #9FB0C4; font-size: 22px; border: none;</string></property>
+  </widget>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <connections/>
+</ui>

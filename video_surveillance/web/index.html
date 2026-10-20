@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>门禁可视对讲 · 住户终端</title>
+<style>
+  /* 设计：rk/gemini-3.7-flash（深色主题，与设备端同一套设计语言） */
+  :root{
+    --bg-base:#0F172A; --bg-card:#1E293B; --text-main:#E2E8F0; --text-sub:#94A3B8;
+    --border:#334155; --accent:#38BDF8; --ok:#10B981; --danger:#EF4444; --radius:12px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg-base); color:var(--text-main); font:15px/1.6 "Microsoft YaHei",system-ui,sans-serif; padding:16px;}
+
+  header{display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+         background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
+         padding:14px 20px; margin-bottom:16px;}
+  header h1{font-size:20px; font-weight:600;}
+  .tag{font-size:12px; padding:3px 10px; border-radius:999px; background:#0b2537; color:var(--accent); border:1px solid var(--border);}
+  .tag.ok{background:rgba(16,185,129,.15); color:var(--ok); border-color:var(--ok);}
+  .tag.bad{background:rgba(239,68,68,.15); color:var(--danger); border-color:var(--danger);}
+  .tag.warn{background:rgba(251,191,36,.15); color:#fbbf24; border-color:#fbbf24;}
+
+  main{display:flex; flex-direction:column; gap:16px;}
+  @media (min-width:1100px){
+    main{display:grid; grid-template-columns:minmax(0,1fr) 320px; align-items:start;}
+  }
+
+  .video-box{position:relative; width:100%; aspect-ratio:16/9; background:#000;
+             border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;
+             display:flex; align-items:center; justify-content:center;}
+  img#video{width:100%; height:100%; object-fit:contain; display:block; background:#000;}
+  .badge{position:absolute; left:12px; top:12px; font-size:12px; padding:4px 10px; border-radius:999px;
+         background:rgba(0,0,0,.6); color:var(--text-sub); border:1px solid var(--border);}
+  .badge.on{color:var(--ok); border-color:var(--ok);}
+  .badge.off{color:var(--danger); border-color:var(--danger);}
+  .hintbox{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+           justify-content:center; gap:10px; text-align:center; color:var(--text-sub); font-size:14px;
+           background:rgba(15,23,42,.92);}
+  .hintbox b{color:#fbbf24; font-size:16px;}
+
+  aside{display:flex; flex-direction:column; gap:16px;}
+  .card{background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
+        padding:16px; display:flex; flex-direction:column; gap:12px;}
+  .card h2{font-size:15px; font-weight:600; color:var(--accent);}
+
+  button{display:inline-flex; align-items:center; justify-content:center; gap:6px;
+         background:var(--accent); color:#06202f; border:1px solid var(--accent);
+         border-radius:10px; padding:9px 14px; font-size:14px; font-weight:600; cursor:pointer;}
+  button:hover:not(:disabled){filter:brightness(1.08);}
+  button.danger{background:var(--danger); border-color:var(--danger); color:#fff;}
+  button.ok{background:var(--ok); border-color:var(--ok); color:#04231a;}
+  button.off{background:var(--border); border-color:var(--border); color:var(--text-sub);}
+  button:disabled{background:var(--border); border-color:var(--border); color:var(--text-sub); cursor:not-allowed;}
+
+  table#info{width:100%; border-collapse:collapse; font-size:14px;}
+  table#info td{padding:8px 0; border-bottom:1px solid var(--border);}
+  table#info tr:last-child td{border-bottom:none;}
+  table#info td:first-child{color:var(--text-sub); width:44%; text-align:left;}
+  table#info td:last-child{text-align:right; color:var(--text-main); font-weight:500;}
+
+  .log{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; line-height:1.6;
+       max-height:240px; overflow:auto; background:var(--bg-base); color:var(--text-sub);
+       border:1px solid var(--border); border-radius:10px; padding:12px; white-space:pre-wrap; word-break:break-all;}
+  #vWebrtc{width:100%; height:100%; object-fit:contain; background:#000; display:block;}
+  .linkbtn{display:inline-flex; align-items:center; justify-content:center;
+    padding:6px 12px; border:1px solid var(--accent); border-radius:6px; color:var(--accent);
+    background:transparent; text-decoration:none; font-size:13px; cursor:pointer;}
+  .linkbtn:hover{background:rgba(56,189,248,.12);}
+  .hint{font-size:12px; color:var(--text-sub);}
+
+  /* ---------- 门禁可视对讲：对讲/开门/通话记录（主色 #1E60D5） ---------- */
+  :root{ --ev:#1E60D5; --ev-soft:rgba(30,96,213,.18); --ev-text:#8FB2F7; }
+  .doorpanel{display:flex; flex-direction:column; gap:10px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  button.door{
+    background:linear-gradient(180deg,#2569E0,#1E60D5); border-color:#1E60D5; color:#fff;
+    font-size:20px; font-weight:700; padding:16px 14px; border-radius:12px; letter-spacing:2px;
+    box-shadow:0 6px 18px rgba(30,96,213,.35);
+  }
+  button.door:hover:not(:disabled){filter:brightness(1.08);}
+  button.door:disabled{background:var(--border); box-shadow:none;}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--ev);}
+  .list{display:flex; flex-direction:column; gap:8px; max-height:300px; overflow:auto;}
+  .rowitem{display:flex; gap:10px; align-items:center; background:var(--bg-base);
+           border:1px solid var(--border); border-left:4px solid var(--ev); border-radius:10px; padding:8px;}
+  .rowitem .m{display:flex; flex-direction:column; gap:2px; min-width:0;}
+  .rowitem .t{font-size:13px; font-weight:600;}
+  .rowitem .s{font-size:12px; color:var(--text-sub);}
+  .badge2{font-size:11px; padding:1px 8px; border-radius:999px; background:var(--ev-soft);
+          color:var(--ev-text); border:1px solid var(--ev);}
+  .badge2.ok{background:rgba(16,185,129,.15); color:var(--ok); border-color:var(--ok);}
+  /* 弹层（开门结果 / 来电） */
+  .modal{position:fixed; inset:0; background:rgba(2,6,23,.82); display:none;
+         align-items:center; justify-content:center; z-index:99; padding:16px;}
+  .modal.on{display:flex;}
+  .modal-inner{background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+               padding:20px; width:min(420px,92vw); display:flex; flex-direction:column; gap:12px;}
+  .modal-inner h3{font-size:18px; color:var(--ok);}
+  /* 来电弹窗：更大更醒目 */
+  #callModal .modal-inner{width:min(520px,94vw); gap:16px; border-color:#fbbf24;
+                          box-shadow:0 10px 40px rgba(0,0,0,.6);}
+  #callModal h3{color:#fbbf24; font-size:22px;}
+  #callModal .who{font-size:14px; color:var(--text-sub);}
+  #callModal .bigbtns{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  #callModal .bigbtns button{font-size:18px; padding:16px 12px; border-radius:12px;}
+  #callCountdown{font-size:13px; color:#fbbf24; text-align:center;}
+  /* 轻提示（拒绝/超时等） */
+  #toast{position:fixed; left:50%; bottom:36px; transform:translateX(-50%); display:none;
+         background:#1E293B; border:1px solid #fbbf24; color:#fbbf24; padding:12px 22px;
+         border-radius:12px; font-size:15px; z-index:120; box-shadow:0 8px 30px rgba(0,0,0,.5);}
+  #toast.on{display:block;}
+
+  /* 事件日志折叠（默认收起，点开才看，方便调试） */
+  #eventLogCard > *:not(summary) { display: none; }
+  #eventLogCard[open] > *:not(summary) { display: block; }
+  #eventLogCard > summary { cursor: pointer; list-style: none; user-select: none; }
+  #eventLogCard > summary::-webkit-details-marker { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>门禁可视对讲 · 住户终端</h1>
+  <span class="tag" id="devTag">待机</span>
+  <span class="tag" id="linkTag">--</span>
+  <span class="hint">RK3506B 门口机 · 呼叫接听后才有画面/声音（按需推流）</span>
+</header>
+
+<main>
+  <div class="video-box">
+    <img id="video" alt="" src="">
+    <video id="vWebrtc" playsinline style="display:none"></video>
+    <div class="badge off" id="videoBadge">待机（无通话）</div>
+    <div class="badge" id="statsBadge" style="left:auto; right:12px; top:12px; font-variant-numeric:tabular-nums">--</div>
+    <div class="hintbox" id="hintbox">
+      <b id="hintTitle">待机中 · 门口机没有推流</b>
+      <div id="hintSub">访客在门口机按「访客呼叫」后，这里会弹出【接听】【拒绝】。</div>
+      <div class="hint">只有点【接听】才会开始推流/拉流（平时完全不出流：省带宽、省 CPU、保护隐私）</div>
+      <div>中转服务：<span id="svcAddr">--</span></div>
+    </div></div>
+
+  <aside>
+    <section class="card">
+      <h2><span class="dot"></span>通话状态</h2>
+      <div class="doorpanel">
+        <div class="hint" id="callStateLine">当前：待机（无通话）</div>
+        <button id="btnHangup" class="danger" disabled>挂 断</button>
+        <div class="hint"></div>
+      </div>
+    </section>
+
+    <!-- ★ 门禁控制：对讲 / 静音 / 免提 / 开门（这些开关只在终端这侧，门口机没有按钮） -->
+    <section class="card">
+      <h2>门禁控制</h2>
+      <div class="doorpanel">
+        <div class="row2">
+          <button id="btnTalk" class="ok">对讲：开</button></div>
+        <button id="btnSpk" class="ok">静音：关</button>
+        <button id="btnDoor" class="door">开 门</button>
+        <div class="hint" id="doorHint"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>通话记录 <span class="hint" id="callsHint">--</span></h2>
+      <div class="list" id="callsList"><div class="hint">加载中…</div></div>
+    </section>
+
+    <div class="card">
+      <h2>设备与流状态</h2>
+      <table id="info"></table></div>
+
+    <div class="card" id="eventLogCard">
+      <h2>事件日志</h2>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+</main>
+
+<!-- ★ 来电弹窗：访客按了「访客呼叫」，住户在这里接听/拒绝 -->
+<div class="modal" id="callModal">
+  <div class="modal-inner">
+    <h3>访客呼叫</h3>
+    <div class="who" id="callWho">门口机 rk3506b-01 正在呼叫…</div>
+    <div class="bigbtns">
+      <button id="btnAccept" class="ok">接 听</button>
+      <button id="btnReject" class="danger">拒 绝</button></div>
+    <div id="callCountdown">30 秒内无人接听将自动挂断</div></div>
+</div>
+
+<!-- ★ 开门结果弹层（样式与整体一致，不用 alert） -->
+<div class="modal" id="doorModal">
+  <div class="modal-inner">
+    <h3 id="doorModalTitle">已开门</h3>
+    <div class="hint" id="doorModalBody">--</div>
+    <button id="doorModalClose">确定</button></div>
+</div>
+
+<!-- 轻提示 -->
+<div id="toast"></div>
+
+<script>
+/*=========================================================================
+ *  ★ 按需推流（2026-10-20）：页面**不再一发现设备就拉流**。
+ *  唯一的推流/拉流条件是：/api/callstate 里本设备 = accepted（住户点过【接听】）。
+ *
+ *  完整流程：
+ *    门口机「访客呼叫」 → 板端 POST /api/call/start?dev=X → state=ringing
+ *    → 本页轮询 /api/callstate 看到 ringing → 弹【接听】【拒绝】（30s 超时）
+ *    → 接听 POST /api/call/X/accept → allowed=accepted
+ *    → 板端轮询到 accepted → 启动 av_stream 开始推流
+ *    → 本页看到 accepted → 才设置 <img src> 拉流 + 开声音/对讲
+ *    → 挂断 POST /api/call/X/hangup → idle → 板端停流、本页停拉流回待机
+ *
+ *  视频：<img src="/live/<dev>.mjpg">，浏览器原生解码 MJPEG
+ *  音频：fetch A-law 流 → JS 查表解码 → Web Audio 播放（解码在客户端）
+ *=========================================================================*/
+const API = '';
+let DEV = null;                 /* 当前通话设备号（来自 /api/callstate） */
+let CALL = 'idle';              /* idle / ringing / accepted / rejected / timeout */
+let streamOn = false;           /* 是否已经建立拉流 */
+let SESSION = null;
+let audioCtx = null, audioOn = false, audioAbort = null;
+let AUDIO_RATE = 16000;        /* 由 /api/devices 的 audio_rate 覆盖 */
+let imgRetryTimer = null;
+let ringDeadline = 0, ringTimer = null;
+let acceptPending = false, hangPending = false;   /* 防在途响应造成的状态回跳 */
+
+const $ = id => document.getElementById(id);
+function logline(s) {
+  const el = $('log');
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + el.textContent;
+}
+function toast(msg, ms) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('on'), ms || 3000);
+}
+
+/* ---------------- A-law → PCM16 解码表（ITU-T G.711） ---------------- */
+function syncAudioRate(d) {
+  if (d && d.audio_rate) AUDIO_RATE = d.audio_rate;
+}
+const ALAW_TABLE = (() => {
+  const t = new Int16Array(256);
+  for (let i = 0; i < 256; i++) {
+    let a = i ^ 0x55;
+    let s = (a & 0x80) ? -1 : 1;
+    let e = (a >> 4) & 0x07;
+    let m = a & 0x0F;
+    let v = m << 1 | 1;
+    v <<= (e + 2);
+    t[i] = s * v;
+  }
+  return t;
+})();
+
+/* ---------------- 界面状态辅助 ---------------- */
+let g_uiEnabled = false;
+function setButtons(enabled) {
+  g_uiEnabled = enabled;
+  ['btnTalk', 'btnSpk', 'btnDoor', 'btnHangup'].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    /* 麦克风只有安全上下文（https / localhost）才允许，http 下对讲按钮直接禁用 */
+    el.disabled = !enabled || (id === 'btnTalk' && !window.isSecureContext);
+  });
+}
+function needCall() {
+  if (CALL !== 'accepted' || !DEV) {
+    toast('还没有通话：等访客呼叫并接听后才能用');
+    return false;
+  }
+  return true;
+}
+
+/* =======================================================================
+ *  呼叫状态轮询（1 秒一次）—— 页面所有"开流/停流"都由它驱动
+ * =====================================================================*/
+function setCallStateText() {
+  const map = {
+    idle: ['待机（无通话）', 'tag', '待机'],
+    ringing: ['访客呼叫中…等待接听', 'tag warn', '呼叫中'],
+    accepted: ['通话中（视频+双向对讲）', 'tag ok', '通话中'],
+    rejected: ['已拒绝（本次不推流）', 'tag bad', '已拒绝'],
+    timeout: ['无人接听（已超时）', 'tag bad', '超时'],
+  };
+  const m = map[CALL] || map.idle;
+  $('callStateLine').textContent = '当前：' + m[0];
+  $('devTag').textContent = (DEV ? '设备 ' + DEV + ' · ' : '') + m[2];
+  $('devTag').className = m[1];
+  $('btnHangup').disabled = (CALL !== 'accepted' && CALL !== 'ringing');
+  if (CALL === 'accepted') {
+    $('videoBadge').className = 'badge on';
+    $('videoBadge').textContent = '视频已连接';
+    $('hintbox').style.display = 'none';
+  } else {
+    $('videoBadge').className = 'badge off';
+    $('videoBadge').textContent = (CALL === 'ringing') ? '等待接听（未推流）' : '待机（无通话）';
+    $('hintbox').style.display = 'flex';
+    $('hintTitle').textContent = CALL === 'ringing' ? '访客正在呼叫…'
+                              : CALL === 'rejected' ? '本次呼叫已被拒绝（门口机未推流）'
+                              : CALL === 'timeout' ? '无人接听（已超时，门口机未推流）'
+                              : '待机中 · 门口机没有推流';
+    $('hintSub').textContent = CALL === 'ringing'
+        ? '请在上方弹窗点【接听】或【拒绝】'
+        : '访客在门口机按「访客呼叫」后，这里会弹出【接听】【拒绝】。';
+  }
+}
+
+function openCallModal(dev) {
+  $('callWho').textContent = `门口机 ${dev || DEV || ''} 正在呼叫…`;
+  $('callModal').classList.add('on');
+  ringDeadline = Date.now() + 30000;
+  clearInterval(ringTimer);
+  const tick = () => {
+    const left = Math.max(0, Math.ceil((ringDeadline - Date.now()) / 1000));
+    $('callCountdown').textContent = left > 0
+      ? `${left} 秒内无人接听将自动挂断`
+      : '已超时，等待门口机复位…';
+  };
+  tick();
+  ringTimer = setInterval(tick, 500);
+}
+function closeCallModal() {
+  $('callModal').classList.remove('on');
+  clearInterval(ringTimer);
+  ringTimer = null;
+}
+
+async function postCall(url) {
+  try {
+    const r = await fetch(API + url, { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    logline(`${url} → HTTP ${r.status} ${JSON.stringify(j).slice(0, 160)}`);
+    return j;
+  } catch (e) {
+    logline(`${url} 失败：${e}`);
+    return null;
+  }
+}
+
+async function doAccept() {
+  if (!DEV) return;
+  closeCallModal();
+  acceptPending = true;              /* ★ 防在途的 ringing 响应把弹窗又弹回来 */
+  logline('住户点【接听】→ 通知中转 accept（板端随后开始推流）');
+  await postCall(`/api/call/${encodeURIComponent(DEV)}/accept`);
+  /* 接听是用户手势：顺便把麦克风打开（http 页面会被浏览器拒绝，startTalk 里已兜住）
+     ★ 注意：不能 await —— startAudio() 里是"一直读流"的循环，await 会把整个
+       pollCall 卡住，后面的 setCallStateText 就永远不执行（表现为页面一直显示
+       "待机"，2026-10-20 实测踩到）。 */
+  enableAudioAuto().catch(() => {});
+  pollCall();
+}
+async function doReject() {
+  if (!DEV) return;
+  closeCallModal();
+  acceptPending = true;
+  logline('住户点【拒绝】→ 通知中转 reject（全程不推流）');
+  const j = await postCall(`/api/call/${encodeURIComponent(DEV)}/reject`);
+  if (!j || !j.ok) toast('拒绝失败，请重试');
+  pollCall();
+}
+async function doHangup() {
+  if (!DEV) return;
+  hangPending = true;                /* ★ 防在途的 accepted 响应又把流拉起来 */
+  logline('住户点【挂断】→ 通知中转 hangup（板端停止推流）');
+  stopStream();
+  CALL = 'idle';
+  setCallStateText();
+  await postCall(`/api/call/${encodeURIComponent(DEV)}/hangup`);
+  pollCall();
+}
+
+async function pollCall() {
+  try {
+    const r = await fetch(API + '/api/callstate', { cache: 'no-store' });
+    const j = await r.json();
+    const list = j.calls || [];
+    /* 优先级：ringing > accepted > rejected/timeout（最近一次） > idle */
+    const st = list.find(c => c.state === 'ringing')
+            || list.find(c => c.state === 'accepted')
+            || list.find(c => c.state === 'rejected' || c.state === 'timeout')
+            || null;
+    const state = st ? st.state : 'idle';
+    const dev = st ? st.dev : null;
+    const prev = CALL;
+    const prevDev = DEV;
+
+    /* ★ 竞态保护：刚点过接听/拒绝/挂断时，可能有"上一轮"的在途响应，
+       里面还是旧状态（ringing / accepted）。不忽略的话弹窗会闪回、
+       或者刚停掉的流又被拉起来（2026-10-20 实测踩到）。 */
+    if (acceptPending && state === 'ringing') {
+      setTimeout(pollCall, 500);
+      return;
+    }
+    if (hangPending && state === 'accepted') {
+      setTimeout(pollCall, 500);
+      return;
+    }
+    if (state !== 'ringing' && state !== 'accepted') { acceptPending = false; hangPending = false; }
+    else if (state === 'accepted') { acceptPending = false; }
+
+    if (dev) DEV = dev;
+    CALL = state;
+
+    if (state === 'ringing' && (prev !== 'ringing' || prevDev !== dev)) {
+      logline(`收到呼叫：${dev}（state=ringing）→ 弹窗`);
+      openCallModal(dev);
+      stopStream();                    /* 没接听之前绝不拉流 */
+    } else if (state === 'ringing' && !$('callModal').classList.contains('on')) {
+      openCallModal(dev);              /* 页面刚打开时也能补弹 */
+    }
+
+    if (state === 'accepted' && !streamOn) {
+      closeCallModal();
+      logline(`已接听：${dev}（state=accepted）→ 板端开始推流，这里开始拉流`);
+      switchStream();
+      /* 同样不能 await（见 doAccept 的注释）：声音在后台自己开 */
+      enableAudioAuto().catch(() => {});
+      if (!micOn) startTalk();
+    } else if (state === 'accepted' && prev !== 'accepted') {
+      closeCallModal();
+    }
+
+    if (state !== 'accepted' && streamOn) {
+      stopStream();
+      logline(`状态变为 ${state} → 停止拉流`);
+    }
+    if (prev !== state) {
+      if (state === 'rejected') toast('对方已拒绝（门口机没有推流）', 4000);
+      if (state === 'timeout') toast('无人接听（30 秒超时，门口机没有推流）', 4000);
+      if (state === 'idle' && prev === 'accepted') toast('通话已结束', 2500);
+      /* ★ 注意：这里不能无条件 closeCallModal()，否则刚在 ringing 分支打开的
+         「访客呼叫」弹窗会被同一轮立刻关掉（2026-10-20 实测踩到：
+         弹窗一闪而过 = 用户看不到接听按钮）。只在离开 ringing 时关。 */
+      if (state !== 'ringing') closeCallModal();
+      logline(`呼叫状态：${prev} → ${state}`);
+    }
+    if (state !== 'ringing') closeCallModal();
+    setButtons(state === 'accepted');
+    setCallStateText();
+  } catch (e) {
+    $('linkTag').textContent = '中转服务不可达';
+    $('linkTag').className = 'tag bad';
+  }
+  setTimeout(pollCall, 1000);
+}
+
+/* =======================================================================
+ *  设备信息轮询（2 秒）—— 只做状态展示，**不触发拉流**
+ * =====================================================================*/
+async function poll() {
+  try {
+    const r = await fetch(API + '/api/devices');
+    const j = await r.json();
+    const list = j.devices || [];
+    $('svcAddr').textContent = location.host;
+
+    if (list.length === 0) {
+      if (CALL === 'accepted') {
+        $('linkTag').textContent = '等待板端推流…';
+        $('linkTag').className = 'tag warn';
+      } else {
+        $('linkTag').textContent = '无流（待机，符合预期）';
+        $('linkTag').className = 'tag';
+      }
+      if (SESSION !== null) { SESSION = null; }
+      if (CALL !== 'accepted' && streamOn) stopStream();
+      const rows0 = [
+        ['设备', DEV || '—'],
+        ['呼叫状态', CALL],
+      ];
+      $('info').innerHTML = rows0.map(r2 => `<tr><td>${r2[0]}</td><td>${r2[1]}</td></tr>`).join('');
+      setTimeout(poll, 2000);
+      return;
+    }
+
+    const d = list[0];
+    if (!DEV) DEV = d.dev;
+    syncAudioRate(d);
+    if (CALL === 'accepted' && SESSION !== d.session) {
+      if (SESSION !== null) logline('设备会话变化（重连）→ 重建拉流');
+      SESSION = d.session;
+    }
+    $('linkTag').textContent = (d.device_status && d.device_status.state === 'offline')
+        ? '离线（心跳超时）' : '在线';
+    $('linkTag').className = 'tag ' + ((d.device_status && d.device_status.state === 'offline') ? 'bad' : 'ok');
+
+    if (CALL === 'accepted') {
+      $('videoBadge').className = 'badge ' + (d.last_frame_age !== null && d.last_frame_age < 3 ? 'on' : 'off');
+      $('videoBadge').textContent = (d.last_frame_age !== null && d.last_frame_age < 3)
+          ? `视频正常 · ${d.fps} fps` : '等待画面…';
+    }
+
+    const rows = [
+      ['设备', d.dev],
+      ['分辨率', d.video_resolution || '—'],
+      ['帧率', d.fps + ' fps'],
+      ['已收帧数', d.frames],
+      ['视频流量', d.video_kbytes + ' KB'],
+      ['音频流量', d.audio_kbytes + ' KB'],
+      ['拉流客户端', d.subscribers + ' 个'],
+      ['设备状态', (d.device_status && d.device_status.state) || '—'],
+      ['摄像头', d.device_status && d.device_status.video ? '正常' : '异常/未接入'],
+      ['麦克风', d.device_status && d.device_status.audio ? '正常' : '无/异常'],
+      ['数据新鲜度', d.frame_age_ms == null ? '--' : (d.frame_age_ms + ' ms')],
+      ['连接时长', d.connected_for + ' s'],
+    ];
+    $('info').innerHTML = rows.map(r2 => `<tr><td>${r2[0]}</td><td>${r2[1]}</td></tr>`).join('');
+  } catch (e) {
+    $('linkTag').textContent = '中转服务不可达';
+    $('linkTag').className = 'tag bad';
+  }
+  setTimeout(poll, 2000);
+}
+
+/* ---------------- 视频拉流（只在 accepted 时调用） ---------------- */
+function switchStream() {
+  if (!DEV) return;
+  streamOn = true;
+  const img = $('video');
+  img.src = API + '/live/' + DEV + '.mjpg?_=' + Date.now();
+  /* 板端刚启动 av_stream 时 /live 会 404 或立刻断开 → 1 秒后自动重试 */
+  img.onerror = () => {
+    if (!streamOn) return;
+    if (imgRetryTimer) return;
+    imgRetryTimer = setTimeout(() => {
+      imgRetryTimer = null;
+      if (streamOn && CALL === 'accepted') {
+        img.src = API + '/live/' + DEV + '.mjpg?_=' + Date.now();
+      }
+    }, 1000);
+  };
+  img.onload = () => { if (imgRetryTimer) { clearTimeout(imgRetryTimer); imgRetryTimer = null; } };
+  if (MODE === 'webrtc') startWebrtc();
+}
+
+function stopStream() {
+  streamOn = false;
+  if (imgRetryTimer) { clearTimeout(imgRetryTimer); imgRetryTimer = null; }
+  const img = $('video');
+  img.onerror = null; img.onload = null;
+  img.removeAttribute('src');
+  stopAudio(); audioOn = false;
+  stopWebrtc();
+  stopTalk();
+  SESSION = null;
+  $('statsBadge').textContent = '--';
+}
+
+/* ---------------- 音频：拉 A-law 流 → 解码 → Web Audio ---------------- */
+async function startAudio() {
+  stopAudio();
+  if (!DEV || CALL !== 'accepted') return;
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  await audioCtx.resume();
+  const ctrl = new AbortController();
+  audioAbort = ctrl;
+  logline('开始拉音频流 ' + DEV + '（A-law，浏览器解码）');
+  try {
+    const resp = await fetch(API + '/live/' + DEV + '.alaw', { signal: ctrl.signal });
+    const reader = resp.body.getReader();
+    let carry = new Uint8Array(0);
+    let nextTime = audioCtx.currentTime + 0.15;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const buf = new Uint8Array(carry.length + value.length);
+      buf.set(carry); buf.set(value, carry.length);
+      const n = buf.length;
+      const usable = n - (n % 160);               // 20ms 一帧（160 个 A-law 采样）
+      if (usable <= 0) { carry = buf; continue; }
+      const pcm = new Float32Array(usable);
+      for (let i = 0; i < usable; i++) pcm[i] = ALAW_TABLE[buf[i]] / 32768;
+      const ab = audioCtx.createBuffer(1, usable, AUDIO_RATE);
+      ab.copyToChannel(pcm, 0);
+      const src = audioCtx.createBufferSource();
+      src.buffer = ab;
+      src.connect(audioCtx.destination);
+      const t = Math.max(nextTime, audioCtx.currentTime + 0.02);
+      src.start(t);
+      nextTime = t + usable / AUDIO_RATE;
+      carry = buf.slice(usable);
+    }
+  } catch (e) {
+    if (!ctrl.signal.aborted) logline('音频流中断: ' + e);
+  }
+}
+function stopAudio() {
+  if (audioAbort) { audioAbort.abort(); audioAbort = null; }
+}
+
+/* ---------------- 按钮 ---------------- */
+$('btnAccept').onclick = doAccept;
+$('btnReject').onclick = doReject;
+$('btnHangup').onclick = doHangup;
+
+/*=========================================================================
+ *  ★ 门禁可视对讲：开门（HMAC 防重放）+ 双向对讲（麦克风上行）
+ *
+ *  开门链路（点一次走完）：
+ *    POST /api/door {dev,nonce,ts,sig}   sig = HMAC-SHA256(key, "<dev>|<ts>|<nonce>")
+ *      → 中转校验 ±30s 时间窗 + 一次性 nonce
+ *      → 下发 T_CONTROL{cmd:"open"} 给板端 av_stream
+ *      → 板端记录事件并在 :8081/door 暴露 count
+ *      → 门口机 Qt 每 0.5s 轮询到 → 弹窗"已开门" → 确认回首页
+ *
+ *  注：这里用**手写的 SHA-256/HMAC**，因为 crypto.subtle 只在安全上下文
+ *     （https / localhost）可用，而本页面是 http://<局域网IP>:8080。
+ *=========================================================================*/
+const DOOR_KEY = 'rk3506b-door-2026';     /* 与中转 SC_DOOR_KEY 一致 */
+
+/* ---- SHA-256（纯 JS，仅用于开门签名）---- */
+const _K256 = new Uint32Array([
+  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+
+function _sha256bytes(bytes) {
+  const l = bytes.length;
+  const withOne = l + 1;
+  const total = ((withOne + 8 + 63) >> 6) << 6;         // 补齐到 512bit 块
+  const m = new Uint8Array(total);
+  m.set(bytes);
+  m[l] = 0x80;
+  const bitLenHi = Math.floor(l * 8 / 4294967296);
+  const bitLenLo = (l * 8) >>> 0;
+  const dv = new DataView(m.buffer);
+  dv.setUint32(total - 8, bitLenHi);
+  dv.setUint32(total - 4, bitLenLo);
+
+  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
+                             0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const w = new Uint32Array(64);
+  const rotr = (x, n) => ((x >>> n) | (x << (32 - n))) >>> 0;
+
+  for (let off = 0; off < total; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = (rotr(w[i-15],7) ^ rotr(w[i-15],18) ^ (w[i-15] >>> 3)) >>> 0;
+      const s1 = (rotr(w[i-2],17) ^ rotr(w[i-2],19) ^ (w[i-2] >>> 10)) >>> 0;
+      w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+    }
+    let [a,b,c,d,e,f,g,h] = H;
+    for (let i = 0; i < 64; i++) {
+      const S1 = (rotr(e,6) ^ rotr(e,11) ^ rotr(e,25)) >>> 0;
+      const ch = ((e & f) ^ (~e & g)) >>> 0;
+      const t1 = (h + S1 + ch + _K256[i] + w[i]) >>> 0;
+      const S0 = (rotr(a,2) ^ rotr(a,13) ^ rotr(a,22)) >>> 0;
+      const mj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+      const t2 = (S0 + mj) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0;
+      d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0;
+    H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0;
+    H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+  }
+  const out = new Uint8Array(32);
+  const odv = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) odv.setUint32(i * 4, H[i]);
+  return out;
+}
+
+function _hmacSha256Hex(keyStr, msgStr) {
+  const enc = new TextEncoder();
+  let key = enc.encode(keyStr);
+  if (key.length > 64) key = _sha256bytes(key);
+  const ipad = new Uint8Array(64), opad = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    const k = i < key.length ? key[i] : 0;
+    ipad[i] = k ^ 0x36; opad[i] = k ^ 0x5c;
+  }
+  const msg = enc.encode(msgStr);
+  const inner = new Uint8Array(64 + msg.length);
+  inner.set(ipad); inner.set(msg, 64);
+  const ih = _sha256bytes(inner);
+  const outer = new Uint8Array(64 + 32);
+  outer.set(opad); outer.set(ih, 64);
+  const oh = _sha256bytes(outer);
+  return Array.from(oh).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* 自检：SHA256("abc") 与 HMAC-SHA256("key","The quick brown fox...") 的标准值 */
+(function shaSelfTest(){
+  const abc = new TextEncoder().encode('abc');
+  const hex = Array.from(_sha256bytes(abc)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const okSha = hex === 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+  const okHmac = _hmacSha256Hex('key', 'The quick brown fox jumps over the lazy dog')
+      === 'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8';
+  window._shaOk = okSha; window._hmacOk = okHmac;
+  if (!okSha || !okHmac) logline('⚠️ JS 哈希自检失败 sha=' + okSha + ' hmac=' + okHmac);
+  try {
+    const probe = _hmacSha256Hex(DOOR_KEY, 'rk3506b-01|1792400000|deadbeefcafe');
+    document.body.dataset.shaOk = String(okSha);
+    document.body.dataset.hmacOk = String(okHmac);
+    document.body.dataset.hmacProbe = probe;
+  } catch (e) {}
+})();
+
+function jsRandomHex(n) {
+  const b = new Uint8Array(n);
+  (window.crypto || window.msCrypto).getRandomValues(b);   // getRandomValues 不要求安全上下文
+  return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
+/* ---- 开门 ---- */
+async function doOpenDoor() {
+  if (!needCall()) return;
+  const btn = $('btnDoor');
+  btn.disabled = true;
+  const oldTxt = btn.textContent;
+  btn.textContent = '开门中…';
+  try {
+    const ts = Math.floor(Date.now() / 1000);
+    const nonce = jsRandomHex(12);
+    const sig = _hmacSha256Hex(DOOR_KEY, `${DEV}|${ts}|${nonce}`);
+    const r = await fetch(API + '/api/door', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dev: DEV, nonce, ts, sig, by: 'web' }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) {
+      doorModal('已开门', `门口机已执行开门（本通电话第 ${j.door_count || 1} 次）。\n` +
+                          `nonce=${nonce.slice(0,8)}… ts=${ts} 校验通过`);
+      logline('开门成功：' + JSON.stringify(j));
+    } else {
+      doorModal('开门失败', (j.error || ('HTTP ' + r.status)) + '\n', true);
+      logline('开门失败：' + JSON.stringify(j));
+    }
+  } catch (e) {
+    doorModal('开门失败', String(e), true);
+  } finally {
+    btn.disabled = !g_uiEnabled;
+    btn.textContent = oldTxt;
+  }
+}
+
+function doorModal(title, body, bad) {
+  $('doorModalTitle').textContent = title;
+  $('doorModalTitle').style.color = bad ? 'var(--danger)' : 'var(--ok)';
+  $('doorModalBody').textContent = body;
+  $('doorModal').classList.add('on');
+}
+$('doorModalClose').onclick = () => $('doorModal').classList.remove('on');
+$('btnDoor').onclick = doOpenDoor;
+
+/*=========================================================================
+ *  ★ 对讲上行：麦克风 → 16k 单声道 PCM16 → 定时 POST /api/talk
+ *
+ *  为什么用 ScriptProcessor 而不是 AudioWorklet：AudioWorklet 只在安全上下文
+ *  （https/localhost）可用。采到的 Float32（通常 48kHz）用线性插值降到 16kHz，
+ *  每 80ms 打一个包 POST 出去；服务器再按 20ms 切片转给板端。
+ *=========================================================================*/
+let micStream = null, micCtx = null, micNode = null, micOn = false;
+let micAccum = [], micAccumLen = 0, micPosting = 0;   /* 在途请求数（不是布尔） */
+let micSentBytes = 0;
+
+const TALK_SR = 16000;
+const POST_MS = 80;
+
+function micFloatToPcm16k(floats, inRate) {
+  const out = [];
+  const step = inRate / TALK_SR;
+  let pos = 0;
+  while (pos < floats.length) {
+    const i0 = Math.floor(pos), i1 = Math.min(i0 + 1, floats.length - 1);
+    const frac = pos - i0;
+    const v = floats[i0] * (1 - frac) + floats[i1] * frac;
+    out.push(Math.max(-1, Math.min(1, v)));
+    pos += step;
+  }
+  return out;
+}
+
+async function startTalk() {
+  if (micOn || !DEV || CALL !== 'accepted') return;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,      /* 终端侧 AEC：别把自己的喇叭声送回门口机 */
+        noiseSuppression: true,
+        /* ★ 关闭 AGC：浏览器 AGC 会把安静环境的底噪推到最大，
+         *   下行在门口机喇叭/耳机里就变成"很大的风噪"。实测这是异响主因之一。 */
+        autoGainControl: false,
+      },
+    });
+    micCtx = micCtx || new (window.AudioContext || window.webkitAudioContext)();
+    await micCtx.resume();
+    const src = micCtx.createMediaStreamSource(micStream);
+    const bufSize = 2048;
+    micNode = micCtx.createScriptProcessor(bufSize, 1, 1);
+    micNode.onaudioprocess = (ev) => {
+      if (!micOn) return;
+      const ch = ev.inputBuffer.getChannelData(0);
+      const pcm = micFloatToPcm16k(ch, micCtx.sampleRate);
+      micAccum.push(pcm);
+      micAccumLen += pcm.length;
+      if (micAccumLen >= TALK_SR * POST_MS / 1000) flushTalk();
+    };
+    src.connect(micNode);
+    micNode.connect(micCtx.destination);     /* 必须连到 destination 才会跑 */
+    micOn = true;
+    $('btnTalk').textContent = '对讲：开';
+    $('btnTalk').className = 'ok';
+    logline(`对讲上行已开启（麦克风 ${micCtx.sampleRate}Hz → ${TALK_SR}Hz 单声道）`);
+  } catch (e) {
+    logline('打开麦克风失败：' + e + '（需要 https 或 localhost，且用户授权）');
+    $('btnTalk').textContent = '对讲：无麦克风';
+    $('btnTalk').className = 'off';
+    const dh = $('doorHint');
+    if (dh) {
+      dh.innerHTML = '⚠️ 无法取麦克风：请用 <b>https://' + location.hostname +
+        ':8443' + location.pathname + '</b> 打开本页（自签证书，点"继续访问"）。' +
+        '视频和"听门口机"不受影响。';
+      dh.style.color = '#fbbf24';
+    }
+  }
+}
+
+function stopTalk() {
+  micOn = false;
+  micAccum = []; micAccumLen = 0;
+  if (micNode) { try { micNode.disconnect(); } catch (e) {} micNode = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  const b = $('btnTalk');
+  if (b) { b.textContent = '对讲：关'; b.className = 'off'; }
+}
+
+function flushTalk() {
+  if (!micAccumLen || !DEV) { return; }
+  /* ★ 关键修复：以前只要 micPosting 为 true 就把累积数据**直接丢弃**，
+   *   网络一慢就丢一大段；恢复后又把积压整段一次性发出，板端按 20ms 切片
+   *   播放不完就被下一批覆盖 → 听感上是"同一小段反复循环 + 断续风噪"。
+   *   现在：不丢数据，只在在途请求过多时限制积压（最多 3 个在途包）。 */
+  if (micPosting >= 3) {           /* 在途过多：只保留最新一段，防止无限积压 */
+    micAccum = []; micAccumLen = 0;
+    return;
+  }
+  const f = new Float32Array(micAccumLen);
+  let p = 0;
+  for (const a of micAccum) { f.set(a, p); p += a.length; }
+  micAccum = []; micAccumLen = 0;
+
+  const pcm = new Int16Array(f.length);
+  for (let i = 0; i < f.length; i++) {
+    const s = Math.max(-1, Math.min(1, f[i]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  micPosting++;
+  window._talkPosts = (window._talkPosts || 0) + 1;
+  document.body.dataset.talkPosts = String(window._talkPosts);
+  document.body.dataset.talkBytes = String(micSentBytes + pcm.byteLength);
+  fetch(`${API}/api/talk?dev=${encodeURIComponent(DEV)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: pcm.buffer,
+  }).then((r) => { micSentBytes += pcm.byteLength; window._talkOk = (window._talkOk || 0) + 1;
+                   document.body.dataset.talkOk = String(window._talkOk); })
+    .catch(e => logline('上行音频发送失败：' + e))
+    .finally(() => {
+      micPosting = Math.max(0, micPosting - 1);
+      /* 若期间又攒够了数据，立刻补发（不再等到下一个 80ms 周期） */
+      if (micAccumLen >= TALK_SR * POST_MS / 1000) flushTalk();
+    });
+}
+
+$('btnTalk').onclick = () => { micOn ? stopTalk() : startTalk(); };
+$('btnSpk').onclick = () => {
+  const b = $('btnSpk');
+  const on = !b.classList.contains('on');
+  b.classList.toggle('on', on);
+  b.textContent = '静音：' + (on ? '关' : '开');   // on=声音开 → 静音关
+  b.className = on ? 'ok' : 'off';
+  const v = $('vWebrtc');
+  if (v) v.muted = !on;
+  if (audioCtx) {
+    if (on) { enableAudioAuto(); }
+    else { stopAudio(); audioOn = false; }
+  }
+  logline('静音：' + (on ? '关（可听门口机）' : '开（听不到门口机）'));
+};
+
+$('btnSpk').classList.add('on');
+
+/* ★ 声音默认开启：浏览器禁止"无用户手势的自动播放"，所以接听话/点击页面时再开 */
+async function enableAudioAuto() {
+  if (audioOn || CALL !== 'accepted') return;
+  try {
+    await startAudio();
+    audioOn = true;
+    logline('声音已开启（默认开启）');
+  } catch (e) { /* 还没有用户手势，等下一次点击再试 */ }
+}
+document.addEventListener('click', () => { enableAudioAuto(); }, { once: true });
+document.addEventListener('touchstart', () => { enableAudioAuto(); }, { once: true });
+
+/* ★ WebRTC 页：首次用户手势时取消静音（恢复声音）并确保在播放 */
+function unmuteWebrtc() {
+  const v = $('vWebrtc');
+  if (!v) return;
+  if (v.muted) { v.muted = false; logline('已开启声音（用户手势后自动恢复）'); }
+  v.play().catch(() => {});
+}
+document.addEventListener('click', unmuteWebrtc, { once: true });
+document.addEventListener('touchstart', unmuteWebrtc, { once: true });
+
+/* ---------------- WebRTC 播放（WHEP，走 MediaMTX 的 8889 端口） ----------------
+ *   浏览器直接和 MediaMTX 协商，拿到 H.264+Opus 的 RTP 流（延迟最低的播放入口）。
+ *   ★ 只在通话中(accepted)才建立连接；挂断即关闭。
+ *   ★ 2026-10-20：HLS 入口已整体删除（MediaMTX hls: no，8888 不再监听），
+ *     页面上只剩两种播放方式，没有 HLS/VLC/RTSP 的任何入口。
+ *   两个独立页面，靠 URL 决定唯一播放方式：
+ *     /         → MJPEG 低延迟页
+ *     /webrtc   → WebRTC(H.264) 页
+ *   ?mode=webrtc 是等效写法。 */
+let pcWebrtc = null;
+const MODE = (location.pathname.replace(/\/+$/, '').endsWith('/webrtc')
+              || location.search.indexOf('mode=webrtc') >= 0) ? 'webrtc' : 'mjpeg';
+
+function applyFixedMode() {
+  const isW = (MODE === 'webrtc');
+  $('video').style.display = isW ? 'none' : 'block';
+  $('vWebrtc').style.display = isW ? 'block' : 'none';
+  document.title = (isW ? 'WebRTC (H.264)' : '低延迟 (MJPEG)') + ' · 门禁可视对讲';
+}
+
+async function startWebrtc() {
+  if (!DEV || CALL !== 'accepted') return;
+  stopWebrtc();
+  try {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    pcWebrtc = pc;
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    pc.ontrack = (ev) => {
+      if (ev.streams && ev.streams[0]) {
+        const v = $('vWebrtc');
+        v.srcObject = ev.streams[0];
+        /* ★ 关键：先静音播放 —— 带音频的 <video> 会被浏览器自动播放策略拦住 */
+        v.muted = true;
+        const tryPlay = () => v.play().catch(() => setTimeout(tryPlay, 800));
+        tryPlay();
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      const st = pc.connectionState;
+      if (st === 'failed' || st === 'disconnected' || st === 'closed') {
+        logline('WebRTC 连接状态: ' + st + ' → 释放');
+        pcWebrtc = null;
+        try { pc.close(); } catch (e) {}
+      }
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await new Promise((r) => {
+      if (pc.iceGatheringState === 'complete') return r();
+      const t = setTimeout(r, 1500);
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') { clearTimeout(t); r(); }
+      };
+    });
+    /* ★ 走中转的同源 /whep 代理（https 页面直接 fetch :8889 会被当成 mixed content 拦掉） */
+    const resp = await fetch(`${API}/whep/${encodeURIComponent(DEV)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp' },
+      body: pc.localDescription.sdp,
+    });
+    if (!resp.ok) throw new Error('WHEP ' + resp.status);
+    await pc.setRemoteDescription({ type: 'answer', sdp: await resp.text() });
+    applyFixedMode();
+    logline('WebRTC 已连接（H.264+Opus，经中转 /whep 代理到 MediaMTX）');
+  } catch (e) {
+    logline('WebRTC 连接失败：' + e.message + '（可改用 / 低延迟 MJPEG 页）');
+    stopWebrtc();
+  }
+}
+
+function stopWebrtc() {
+  if (pcWebrtc) {
+    try { pcWebrtc.close(); } catch (e) {}
+    pcWebrtc = null;
+  }
+  const v = $('vWebrtc');
+  if (v) { try { v.srcObject = null; } catch (e) {} }
+}
+
+applyFixedMode();
+
+/* WebRTC 页：通话中(accepted)但还没连上时，每 3 秒重试一次 */
+let lastWrtcTry = 0;
+setInterval(() => {
+  if (MODE === 'webrtc' && CALL === 'accepted' && DEV && !pcWebrtc
+      && Date.now() - lastWrtcTry > 3000) {
+    lastWrtcTry = Date.now();
+    startWebrtc();
+  }
+}, 2000);
+
+/* ================= 实时读数 =================
+ *   MJPEG 页   ：码率 = 服务端收流速率（两次采样差），帧龄 = 服务端最后一帧距今
+ *   WebRTC 页  ：码率 / 抖动缓冲延迟 / 解码帧 / 丢帧，全部来自浏览器 getStats() 实测
+ * ==========================================*/
+let lastBytes = 0, lastTs = 0;
+
+function fmtMbps(bytes, ms) {
+  if (!ms) return '--';
+  return ((bytes * 8) / (ms / 1000) / 1e6).toFixed(2) + ' Mbps';
+}
+
+async function updateReadouts() {
+  const el = $('statsBadge');
+  if (CALL !== 'accepted') { el.textContent = '--'; lastBytes = 0; lastTs = 0; return; }
+  if (MODE === 'webrtc' && pcWebrtc) {
+    try {
+      const st = await pcWebrtc.getStats();
+      let inb = 0, jbDelay = 0, jbCount = 0, decoded = 0, dropped = 0, w = 0, h = 0;
+      st.forEach((r) => {
+        if (r.type === 'inbound-rtp' && r.kind === 'video') {
+          inb = r.bytesReceived || 0;
+          decoded = r.framesDecoded || 0;
+          dropped = r.framesDropped || 0;
+          w = r.frameWidth || 0; h = r.frameHeight || 0;
+        }
+        if (r.type === 'inbound-rtp' && r.jitterBufferDelay != null) {
+          jbDelay = r.jitterBufferDelay || 0;
+          jbCount = r.jitterBufferEmittedCount || 0;
+        }
+      });
+      const t = performance.now();
+      let mbps = '--';
+      if (lastTs && inb >= lastBytes) mbps = fmtMbps(inb - lastBytes, t - lastTs);
+      lastBytes = inb; lastTs = t;
+      const jbMs = jbCount ? (jbDelay / jbCount * 1000).toFixed(0) : '--';
+      el.textContent = `WebRTC ${mbps} · 抖动缓冲 ${jbMs} ms · 解码 ${decoded} 帧 · 丢 ${dropped}` +
+                       (w ? ` · ${w}x${h}` : '');
+    } catch (e) {
+      el.textContent = 'WebRTC 读秒失败：' + e.message;
+    }
+  } else {
+    try {
+      const r = await fetch(API + '/api/devices');
+      const j = await r.json();
+      const d = (j.devices || [])[0];
+      if (!d) { el.textContent = '--'; return; }
+      const t = performance.now();
+      const b = d.video_kbytes || 0;
+      let mbps = '--';
+      if (lastTs && b >= lastBytes) mbps = fmtMbps((b - lastBytes) * 1024, t - lastTs);
+      lastBytes = b; lastTs = t;
+      el.textContent = `MJPEG ${mbps} · 数据新鲜度 ` +
+                       (d.frame_age_ms == null ? '--' : d.frame_age_ms + ' ms') +
+                       ` · ${d.fps || 0} fps`;
+    } catch (e) { el.textContent = '--'; }
+  }
+}
+setInterval(updateReadouts, 2000);
+
+/* ==================== 通话记录（保留；中转只落盘 calls.json）==================== */
+function fmtTime(ts) {
+  if (!ts) return '--';
+  const d = new Date(ts * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function fmtDur(s) {
+  if (s == null) return '进行中';
+  if (s < 60) return s.toFixed(1) + ' s';
+  return Math.floor(s / 60) + ' 分 ' + Math.round(s % 60) + ' s';
+}
+
+async function loadCalls() {
+  try {
+    const r = await fetch(API + '/api/calls?limit=20', { cache: 'no-store' });
+    const j = await r.json();
+    const list = j.calls || [];
+    const active = Object.keys(j.active || {}).length;
+    $('callsHint').textContent = `${list.length} 条` + (active ? ` · ${active} 通进行中` : '');
+    const box = $('callsList');
+    const sig = list.map(c => c.id + c.duration + (c.door || []).length).join(',') + '|' + active;
+    if (sig === box.dataset.sig) return;
+    box.dataset.sig = sig;
+    if (!list.length) { box.innerHTML = '<div class="hint">还没有通话（按门口机「访客呼叫」并接听就会有一条）</div>'; return; }
+    box.innerHTML = list.map(c => {
+      const opened = (c.door || []).length;
+      return `<div class="rowitem"><div class="m">
+        <div class="t">${fmtTime(c.start)} · ${fmtDur(c.duration)}</div>
+        <div class="s">${c.dev} · 来源 ${c.source || '--'}${c.ended_by ? ' · ' + c.ended_by : ''}</div>
+        <div class="s">
+          <span class="badge2 ${c.audio ? 'ok' : ''}">${c.audio ? '有对讲音频' : '无音频'}</span>
+          <span class="badge2 ${opened ? 'ok' : ''}">${opened ? '已开门 ' + opened + ' 次' : '未开门'}</span></div></div></div>`;
+    }).join('');
+  } catch (e) { $('callsHint').textContent = '接口不可用'; }
+}
+setInterval(loadCalls, 5000);
+loadCalls();
+
+/* ---------- 启动 ---------- */
+setButtons(false);
+setCallStateText();
+logline('页面就绪：按需推流模式 —— 只有接听后才有视频和声音');
+pollCall();
+poll();
+
+/* ★ 浏览器安全上下文检查：http 页面拿不到麦克风（对讲上行必须 https） */
+(function checkSecureCtx(){
+  if (window.isSecureContext) return;
+  const httpsUrl = `https://${location.hostname}:8443${location.pathname}${location.search}`;
+  const el = $('doorHint');
+  if (el) {
+    el.innerHTML = '⚠️ 当前是 <b>http</b> 页面，浏览器禁止取麦克风（对讲上行不可用）。' +
+      `请改用 <a href="${httpsUrl}" style="color:#fbbf24">${httpsUrl}</a> 打开（自签证书，点"继续访问"即可）。` +
+      '视频与"听门口机"在 http 下仍然正常。';
+    el.style.color = '#fbbf24';
+  }
+  logline('安全上下文缺失：对讲上行需要 https://<ip>:8443/（其余功能不受影响）');
+})();
+</script>
+</body>
+</html>
